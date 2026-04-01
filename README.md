@@ -34,29 +34,127 @@ VisionInsight AI is a production-ready facial recognition system combining state
 
 **Prerequisites:** Python 3.9+ | 8GB RAM (16GB recommended) | 4GB disk space
 
-**Installation:** Clone the repository using `git clone https://github.com/YOUR_USERNAME/visioninsight-ai.git` then navigate into the directory with `cd visioninsight-ai`. Create a virtual environment using `python -m venv venv` and activate it with `source venv/bin/activate` (on Windows use `venv\Scripts\activate`). Install all dependencies with `pip install flask deepface opencv-python numpy pillow pillow-heif retina-face`. Run the application with `python app.py` and open your browser to `http://localhost:5000`.
+**Installation:** 
+# Clone repository
+git clone https://github.com/YOUR_USERNAME/visioninsight-ai.git
+cd visioninsight-ai
 
-**Docker Deployment:** Build the Docker image using `docker build -t visioninsight:latest .` then run the container with `docker run -p 5000:5000 -v $(pwd)/data:/app/data visioninsight:latest`. The application will be available at `http://localhost:5000`.
+# Setup virtual environment
+python -m venv venv
+source venv/bin/activate  # Windows: venv\Scripts\activate
+
+# Install dependencies
+pip install flask deepface opencv-python numpy pillow pillow-heif retina-face
+
+# Run application
+python app.py
+
+# Open browser at http://localhost:5000
+
+
+**Docker Deployment:** 
+docker build -t visioninsight:latest .
+docker run -p 5000:5000 -v $(pwd)/data:/app/data visioninsight:latest
 
 ## 📸 How It Works
 
-The recognition flow begins when images are uploaded to the system. First, faces are detected using the RetinaFace algorithm which provides high accuracy even for occluded faces or profile views. Each detected face is then converted into a 512-dimensional embedding vector using the Facenet512 model, which represents unique facial features in a mathematical format that can be compared efficiently. These embeddings are matched against the stored database using cosine similarity, with a configurable threshold defaulting to 0.85. When a match is found with sufficient confidence, the face is recognized and grouped into person-specific albums. The system automatically creates albums for each identified person and also groups unknown faces separately. Users can then label unknown faces, and the system learns by storing these new embeddings in the database, improving future recognition accuracy without requiring full retraining.
+Upload Images → Face Detection (RetinaFace) → Embedding Extraction (Facenet512) 
+→ Recognition & Matching → Album Creation → User Feedback Loop (Self-Learning)
+
+Recognition Flow:
+
+Detection: Faces detected using RetinaFace algorithm
+
+Extraction: Each face converted to 512-dimensional embedding
+
+Matching: Cosine similarity compares embeddings against database
+
+Grouping: Matches clustered into person-specific albums
+
+Learning: Unknown faces can be labeled and stored for future recognition
 
 ## 📡 API Reference
 
-The application exposes several REST endpoints. `GET /` serves the main upload interface. `POST /upload` accepts images for processing, returning JSON with albums, confidence scores, and face counts. `POST /learn` adds new face embeddings to the database, accepting a person name and embedding vector. `GET /albums` retrieves all existing albums with their associated images. `DELETE /face/<id>` removes a specific face from the database. Example API call: `requests.post('http://localhost:5000/upload', files={'images': open('family.jpg', 'rb')})` returns `{"albums": [{"person": "John_Doe", "confidence": 0.96, "images": ["family_1.jpg"], "face_count": 2}, {"person": "Unknown", "images": ["family_2.jpg"], "face_count": 1}]}`.
+Method	Endpoint	Description
+GET	/	Main upload interface
+POST	/upload	Upload and process images
+POST	/learn	Add new face to database
+GET	/albums	Retrieve all albums
+
+## Example API Call
+import requests
+
+response = requests.post(
+    'http://localhost:5000/upload',
+    files={'images': open('family.jpg', 'rb')}
+)
+
+# Response
+{
+    "albums": [
+        {"person": "John_Doe", "confidence": 0.96, "images": ["family_1.jpg"], "face_count": 2},
+        {"person": "Unknown", "images": ["family_2.jpg"], "face_count": 1}
+    ]
+}
+
 
 ## ⚙️ Configuration
 
-Edit `config.py` to customize model settings and performance parameters. For model configuration, set `detector_backend` to 'retinaface', 'opencv', or 'mtcnn'; `recognition_model` to 'Facenet512', 'VGG-Face', or 'ArcFace'; `threshold` to a value between 0 and 1 (default 0.85); and `enforce_detection` to True or False. For performance tuning, configure `batch_size` (default 32), `num_workers` (default 4), `use_gpu` (True/False), and `cache_embeddings` (True/False).
+Edit `config.py` to customize model settings and performance parameters :
+
+MODEL_CONFIG = {
+    'detector_backend': 'retinaface',  # opencv, mtcnn, retinaface
+    'recognition_model': 'Facenet512', # VGG-Face, Facenet, ArcFace
+    'threshold': 0.85,                 # Recognition confidence threshold
+    'enforce_detection': True
+}
+
+PERFORMANCE_CONFIG = {
+    'batch_size': 32,
+    'num_workers': 4,
+    'use_gpu': True,
+    'cache_embeddings': True
+}
 
 ## 📊 Performance Metrics
 
-Detection speed averages 0.08 seconds per image when using GPU acceleration, while recognition speed averages 0.12 seconds per face. Batch processing can handle approximately 120 images per minute. Memory usage is approximately 2.5GB when storing 10,000 embeddings. The system achieves 98.7% accuracy on the Labeled Faces in the Wild (LFW) benchmark dataset.
+Metric	Value
+Detection Speed	0.08s/image (GPU)
+Recognition Speed	0.12s/face (GPU)
+Batch Processing	120 images/min
+Memory Usage	2.5GB (10,000 embeddings)
+Accuracy	98.7% on LFW benchmark
 
 ## 🚢 Deployment
 
-For production deployment, use Gunicorn as the WSGI server with the command `gunicorn -w 4 -b 0.0.0.0:5000 app:app`. Configure Nginx as a reverse proxy with the following configuration: `server { listen 80; server_name your-domain.com; location / { proxy_pass http://localhost:5000; proxy_set_header Host $host; } location /static/ { alias /path/to/static/; expires 30d; } client_max_body_size 20M; }`. Set environment variables including `FLASK_ENV=production`, `SECRET_KEY=your-secret-key-here`, `UPLOAD_FOLDER=/var/data/uploads`, and `MAX_CONTENT_LENGTH=16777216`.
+### Production with Gunicorn
+pip install gunicorn
+gunicorn -w 4 -b 0.0.0.0:5000 app:app
+
+### Nginx Configuration
+server {
+    listen 80;
+    server_name your-domain.com;
+    
+    location / {
+        proxy_pass http://localhost:5000;
+        proxy_set_header Host $host;
+    }
+    
+    location /static/ {
+        alias /path/to/static/;
+        expires 30d;
+    }
+    
+    client_max_body_size 20M;
+}
+
+### Environment Variables
+
+FLASK_ENV=production
+SECRET_KEY=your-secret-key-here
+UPLOAD_FOLDER=/var/data/uploads
+MAX_CONTENT_LENGTH=16777216
 
 ## 📁 Project Structure
 visioninsight-ai/
@@ -82,31 +180,92 @@ visioninsight-ai/
 
 ## 🔧 Core Implementation
 
-**Face Detector Class:** Initialized with `detector_backend` parameter (default 'retinaface'). The `detect_faces` method uses DeepFace's extract_faces function to detect faces, returning bounding boxes, confidence scores, and facial landmarks. It handles image preprocessing and alignment automatically.
+**Face Detector Class:** 
 
-**Face Recognizer Class:** Initialized with `model_name` (default 'Facenet512') and `threshold` (default 0.85). The `get_embedding` method extracts 512-dimensional vectors from face images using DeepFace's represent function. The `recognize` method calculates cosine similarity between query embeddings and stored embeddings, returning the best match with confidence score. The `learn` method adds new embeddings to the database and persists them to disk using pickle.
+class FaceDetector:
+    def __init__(self, detector_backend='retinaface'):
+        self.detector_backend = detector_backend
+    
+    def detect_faces(self, image_path):
+        faces = DeepFace.extract_faces(
+            img_path=image_path,
+            detector_backend=self.detector_backend,
+            enforce_detection=True,
+            align=True
+        )
+        return faces
 
-**Flask Application:** Defines routes for the main interface, upload processing, and learning endpoint. The upload handler validates file types, saves images, processes each face through detection and recognition pipelines, and groups results into albums. The learn endpoint accepts JSON with person name and embedding vector, adding it to the recognizer's database.
+**Face Recognizer Class:** 
+class FaceRecognizer:
+    def __init__(self, model_name='Facenet512', threshold=0.85):
+        self.model_name = model_name
+        self.threshold = threshold
+        self.embeddings_db = self._load_embeddings()
+    
+    def get_embedding(self, face_image):
+        embedding = DeepFace.represent(
+            img_path=face_image,
+            model_name=self.model_name,
+            enforce_detection=False
+        )
+        return np.array(embedding[0]['embedding'])
+    
+    def recognize(self, face_embedding):
+        best_match = None
+        best_score = 0
+        for person, embeddings in self.embeddings_db.items():
+            for stored in embeddings:
+                similarity = self._cosine_similarity(face_embedding, np.array(stored))
+                if similarity > best_score and similarity >= self.threshold:
+                    best_score = similarity
+                    best_match = person
+        return best_match, best_score
+    
+    def learn(self, person_name, face_embedding):
+        if person_name not in self.embeddings_db:
+            self.embeddings_db[person_name] = []
+        self.embeddings_db[person_name].append(face_embedding.tolist())
+        self._save_embeddings()
 
 ## ❓ Troubleshooting
 
-If you encounter `ImportError: No module named 'deepface'`, install it using `pip install deepface`. For CUDA out of memory errors, reduce batch size in configuration or disable GPU by setting `use_gpu: False`. If HEIC files fail to open, install `pip install pillow-heif`. For slow processing, enable GPU acceleration by installing tensorflow-gpu and setting `use_gpu: True`. If face detection fails consistently, adjust the detection threshold or change the detector backend from 'retinaface' to 'mtcnn' or 'opencv'.
+Issue	Solution
+ImportError: No module named 'deepface'	pip install deepface
+CUDA out of memory	Reduce batch size or disable GPU
+HEIC files not opening	pip install pillow-heif
+Slow processing	Enable GPU acceleration
+Face detection failing	Adjust threshold or change detector backend
 
 ## 🤝 Contributing
 
-Fork the repository and create a feature branch using `git checkout -b feature/amazing-feature`. Commit your changes with `git commit -m 'Add amazing feature'` and push to the branch using `git push origin feature/amazing-feature`. Open a Pull Request with a clear description of your changes. Follow PEP 8 style guidelines, add tests for new features, and update documentation as needed.
+Fork the repository
+
+Create feature branch (git checkout -b feature/amazing-feature)
+
+Commit changes (git commit -m 'Add amazing feature')
+
+Push to branch (git push origin feature/amazing-feature)
+
+Open Pull Request
 
 ## 📄 License
 
-This project is licensed under the MIT License. Copyright (c) 2024 Shaurya Singh. Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files, to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, subject to the following conditions: The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software. The software is provided "as is", without warranty of any kind, express or implied, including but not limited to the warranties of merchantability, fitness for a particular purpose and noninfringement.
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files, to deal in the Software
+without restriction, including without limitation the rights to use, copy,
+modify, merge, publish, distribute, sublicense, and/or sell copies.
 
 ## 👨‍💻 Author
 
-**Shaurya Singh** - GitHub: [@YOUR_USERNAME](https://github.com/YOUR_USERNAME)
+**Shaurya Singh** - GitHub: [@YOUR_USERNAME](https://github.com/DA-Shaurya)
 
 ## 🙏 Acknowledgments
 
-DeepFace library by Serengil for providing the face recognition infrastructure, RetinaFace for state-of-the-art face detection, Flask framework for the web application foundation, and the open-source community for continuous contributions and improvements.
+DeepFace - Face recognition library
+
+RetinaFace - Face detection model
+
+Flask - Web framework
 
 <div align="center">
 ⭐ Star this repository if you find it useful!<br>
