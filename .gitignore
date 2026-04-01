@@ -1,0 +1,14 @@
+__pycache__/
+*.pyc
+*.pkl
+.env
+
+# uploads (optional)
+static/uploads/
+
+# deepface weights
+.deepface/
+
+# OS
+.DS_Store
+Thumbs.db
