@@ -88,3 +88,56 @@ Unlike traditional solutions, VisionInsight implements a **continuous learning p
 - 8GB RAM (16GB recommended)
 - 4GB free disk space
 - Optional: CUDA-capable GPU for faster processing
+
+# 1. Clone the repository
+git clone https://github.com/YOUR_USERNAME/visioninsight-ai.git
+cd visioninsight-ai
+
+# 2. Create virtual environment
+python -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
+
+# 3. Install dependencies
+pip install -r requirements.txt
+
+# 4. Run the application
+python app.py
+
+# 5. Open your browser
+# Navigate to http://localhost:5000
+
+# Build the image
+docker build -t visioninsight:latest .
+
+# Run the container
+docker run -p 5000:5000 \
+  -v $(pwd)/data:/app/data \
+  -v $(pwd)/uploads:/app/static/uploads \
+  visioninsight:latest
+
+import requests
+
+# Upload images
+response = requests.post(
+    'http://localhost:5000/upload',
+    files={'images': open('family.jpg', 'rb')}
+)
+
+# Response
+{
+    "albums": [
+        {
+            "person": "John_Doe",
+            "confidence": 0.96,
+            "images": ["family_1.jpg", "family_3.jpg"],
+            "face_count": 2
+        },
+        {
+            "person": "Unknown",
+            "images": ["family_2.jpg"],
+            "face_count": 1
+        }
+    ]
+}
+
+
