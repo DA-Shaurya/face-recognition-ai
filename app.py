@@ -2,8 +2,8 @@ import os
 import cv2
 from PIL import Image
 import pillow_heif
-from flask import flash
-from flask import Flask, render_template, request, session, redirect, url_for
+from flask import Flask, request, session, jsonify
+from flask_cors import CORS
 
 from utils.deepface_utils import get_faces_data  # 👈 NEW (with boxes)
 from utils.clustering import cluster_faces
@@ -12,6 +12,8 @@ from utils.embedding_store import load_embeddings, save_embeddings
 
 app = Flask(__name__)
 app.secret_key = "supersecretkey123"
+# Enable cookies for sessions and allow standard React dev server ports
+CORS(app, supports_credentials=True, origins=["http://localhost:5173", "http://localhost:3000", "http://127.0.0.1:5173", "http://127.0.0.1:3000"])
 
 UPLOAD_FOLDER = "static/uploads"
 app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
@@ -20,8 +22,8 @@ app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
 @app.route("/")
 def index():
     if "albums" in session:
-        return render_template("result.html", albums=session["albums"], boxed_image=session.get("boxed_image"))
-    return render_template("index.html")
+        return jsonify({"has_session": True, "albums": session["albums"], "boxed_image": session.get("boxed_image")})
+    return jsonify({"has_session": False})
 
 
 @app.route("/upload", methods=["POST"])
@@ -122,27 +124,27 @@ def upload():
     else:
         session["boxed_image"] = None
 
-    return render_template(
-    "result.html",
-    albums=albums,
-    boxed_image=session.get("boxed_image")
-)
+    return jsonify({
+        "albums": albums,
+        "boxed_image": session.get("boxed_image")
+    })
 
 
 @app.route("/add_person", methods=["POST"])
 def add_person():
-    name = request.form.get("name")
-    image = request.form.get("image")
+    req = request.json or {}
+    name = req.get("name")
+    image = req.get("image")
 
     if not name or not image:
-        return "Invalid input"
+        return jsonify({"error": "Invalid input"}), 400
 
     image_path = os.path.join("static/uploads", image)
 
     faces = get_faces_data(image_path)
 
     if not faces:
-        return "No face found"
+        return jsonify({"error": "No face found"}), 400
 
     data = load_embeddings()
 
@@ -163,19 +165,15 @@ def add_person():
     print(f"Saved embeddings for {name}. Total: {len(data[name])}")
 
     # 🔥 DIFFERENT MESSAGES
-    if is_new_person:
-        flash(f'🆕 Created new person "{name}" and added face!')
-    else:
-        flash(f'➕ Added another image to "{name}"')
-
-    return redirect(url_for("index"))
+    msg = f'🆕 Created new person "{name}" and added face!' if is_new_person else f'➕ Added another image to "{name}"'
+    return jsonify({"success": True, "message": msg})
 
 
 @app.route("/reset", methods=["POST"])
 def reset():
     session.pop("albums", None)
     session.pop("boxed_image", None)
-    return render_template("index.html")
+    return jsonify({"success": True})
 
 
 if __name__ == "__main__":
