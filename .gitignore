@@ -5,6 +5,7 @@ __pycache__/
 *.pyd
 *.pkl
 *.egg-info/
+*.whl
 dist/
 build/
 .eggs/
@@ -26,6 +27,8 @@ celerybeat.pid
 # ── Node / Frontend ───────────────────────────────────────────────────────────
 node_modules/
 frontend/node_modules/
+package-lock.json
+frontend/package-lock.json
 dist/
 frontend/dist/
 .vite/
