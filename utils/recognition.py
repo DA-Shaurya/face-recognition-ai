@@ -1,51 +1,36 @@
 import numpy as np
-from utils.embedding_store import load_embeddings
+from utils.database import db, Person, FaceEmbedding
 
-def load_known_faces():
-    return load_embeddings()
+def find_person(embedding, threshold=0.8, margin=0.05):
+    """
+    Returns (name, distance).
+    Uses pgvector's L2 distance operator.
+    """
+    emb_array = np.array(embedding, dtype=np.float32)
+    norm = np.linalg.norm(emb_array)
+    if norm > 0:
+        emb_array = emb_array / norm
 
+    # Query for nearest neighbors
+    # We only want known faces
+    closest_faces = db.session.query(FaceEmbedding, FaceEmbedding.embedding.l2_distance(emb_array.tolist()).label('distance')) \
+        .filter(FaceEmbedding.person_id.isnot(None)) \
+        .order_by('distance') \
+        .limit(2) \
+        .all()
 
-def find_person(embedding, known_faces):
-    import numpy as np
-
-    # 🔥 normalize input embedding ONCE
-    embedding = np.array(embedding)
-    embedding = embedding / np.linalg.norm(embedding)
-
-    if not known_faces:
+    if not closest_faces:
         return "Unknown", 1.0
 
-    distances = []
+    best_match, best_dist = closest_faces[0]
+    second_dist = closest_faces[1].distance if len(closest_faces) > 1 else 1.0
 
-    for name, embeddings_list in known_faces.items():
-        for known_emb in embeddings_list:
+    gap_ok = (second_dist - best_dist) > margin
+    threshold_ok = best_dist < threshold
 
-            # 🔥 normalize stored embedding
-            known_emb = np.array(known_emb)
-            known_emb = known_emb / np.linalg.norm(known_emb)
+    if threshold_ok and gap_ok:
+        person = db.session.get(Person, best_match.person_id)
+        if person:
+            return person.name, float(best_dist)
 
-            # 🔥 compute distance
-            distance = np.linalg.norm(embedding - known_emb)
-
-            print(f"{name} distance = {distance}")
-
-            distances.append((name, distance))
-
-    if not distances:
-        return "Unknown", 1.0
-
-    # sort by closest
-    distances.sort(key=lambda x: x[1])
-
-    best_match, best_distance = distances[0]
-
-    # second best (for confidence gap)
-    second_best = distances[1][1] if len(distances) > 1 else 1.0
-
-    print(f"Best: {best_match}, distance = {best_distance}")
-
-    # 🔥 improved decision logic
-    if best_distance < 0.8 and (second_best - best_distance) > 0.05:
-        return best_match, best_distance
-    else:
-        return "Unknown", best_distance
+    return "Unknown", float(best_dist)

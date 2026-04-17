@@ -1,10 +1,19 @@
 from sklearn.cluster import DBSCAN
+import numpy as np
 
 def cluster_faces(encodings):
     if len(encodings) == 0:
         return []
 
-    model = DBSCAN(metric='euclidean', eps=10, min_samples=1)
-    labels = model.fit_predict(encodings)
+    X = np.array(encodings)
 
-    return labels
+    # 🔥 NORMALIZE (MOST IMPORTANT FIX)
+    X = X / np.linalg.norm(X, axis=1, keepdims=True)
+
+    clustering = DBSCAN(
+        eps=0.5,          # stricter
+        min_samples=1,    
+        metric='euclidean'
+    ).fit(X)
+
+    return clustering.labels_

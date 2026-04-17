@@ -1,0 +1,8 @@
+__pycache__/
+*.pyc
+venv/
+.env
+dataset/
+frontend/node_modules/
+static/uploads/
+.git/

@@ -1,14 +1,48 @@
+# ── Python ────────────────────────────────────────────────────────────────────
 __pycache__/
-*.pyc
+*.py[cod]
+*.pyo
+*.pyd
 *.pkl
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# ── Environment / Secrets ─────────────────────────────────────────────────────
 .env
+*.env.local
 
-# uploads (optional)
-static/uploads/
-
-# deepface weights
+# ── DeepFace model weights ────────────────────────────────────────────────────
 .deepface/
 
-# OS
+# ── Uploads (user data — not committed) ──────────────────────────────────────
+static/uploads/
+
+# ── Celery Beat schedule file ─────────────────────────────────────────────────
+celerybeat-schedule
+celerybeat.pid
+
+# ── Node / Frontend ───────────────────────────────────────────────────────────
+node_modules/
+frontend/node_modules/
+dist/
+frontend/dist/
+.vite/
+
+# ── Docker ────────────────────────────────────────────────────────────────────
+# (docker-compose.yml and Dockerfiles ARE committed)
+
+# ── IDEs ─────────────────────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.suo
+*.user
+
+# ── OS ────────────────────────────────────────────────────────────────────────
 .DS_Store
 Thumbs.db
+desktop.ini
+
+# ── Logs ──────────────────────────────────────────────────────────────────────
+*.log
