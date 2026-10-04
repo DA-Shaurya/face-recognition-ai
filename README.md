@@ -7,6 +7,7 @@
 ![Redis](https://img.shields.io/badge/Redis-7-DC382D.svg)
 ![Celery](https://img.shields.io/badge/Celery-5.4-37814A.svg)
 ![Docker](https://img.shields.io/badge/Docker-Compose-2496ED.svg)
+![CI](https://github.com/DA-Shaurya/face-recognition-ai/actions/workflows/ci.yml/badge.svg)
 ![License](https://img.shields.io/badge/License-MIT-green.svg)
 
 A production-ready, fully containerized face recognition platform. Upload photos, auto-detect every face using **ArcFace + RetinaFace**, group unknown people into smart clusters, tag identities, and recognize known people in future uploads — all powered by a scalable microservices architecture.
@@ -56,13 +57,16 @@ A production-ready, fully containerized face recognition platform. Upload photos
 | **React 19 + Vite 8** | Fast HMR development server with ESM-first bundling. |
 | **Drag & Drop Upload** | Drop zone supports JPG, PNG, HEIC, WEBP. Multiple files at once. |
 | **Live Progress Bar** | SSE-powered progress indicator shows which file is currently being scanned. |
-| **Face Albums View** | Results grouped by identity. Known people show an average confidence bar. |
+| **Face Albums View** | Results grouped by identity with fixed confidence accuracy percentage bar. |
 | **Album Pagination** | Each identity album shows 12 images per page with Prev/Next navigation — no browser freeze on large batches. |
 | **Annotated Preview** | Side-by-side view of the original and the annotated image with colored bounding boxes and name labels. |
+| **Interactive Lightbox Modal** | Click any thumbnail to view high-resolution originals and annotated detections with Esc/backdrop dismiss. |
+| **Real-Time Person Search** | Instant filter by identity name in the database management view. |
+| **System Health & Stats Dashboard** | Real-time overview of total registered identities, face vectors, images, and connectivity state. |
 | **Inline Tag / Correct** | Tag an unknown face or correct a misidentification directly from the results card. |
 | **Rename Person** | Inline ✏️ edit button on each person row in the Persons DB view — calls `POST /rename_person`. |
-| **Delete Person** | Remove a person and all their face embeddings from the database. |
-| **Persons Database View** | Lists all known identities with their embedding count. |
+| **Delete Safeguard** | Native confirmation prompt before removing an identity and its face embeddings from the database. |
+| **Persons Database View** | Lists all known identities with their embedding count and creation timestamps. |
 | **Recognition Parameter Tuning** | Live sliders for confidence threshold and match margin, applied to the backend via `POST /settings`. |
 | **Toast Notifications** | Success/error toasts for all actions with auto-dismiss. |
 | **Session Persistence** | Refreshing the page restores the last scan from the Redis cache. |
@@ -272,12 +276,16 @@ npm run dev
 
 | Method | Endpoint | Description |
 |---|---|---|
-| `GET` | `/health` | Service health check (Redis + DB) |
+| `GET` | `/health` | Service health check (Redis + PostgreSQL status) |
+| `GET` | `/api/stats` | System statistics (total persons, embeddings, images, status) |
 | `GET` | `/` | Check for active session / cached results |
-| `POST` | `/upload_stream` | Upload images → returns SSE stream |
-| `GET` | `/persons` | List all known persons |
+| `POST` | `/upload_stream` | Upload images → returns real-time SSE stream |
+| `GET` | `/uploads/<filename>` | Securely serve uploaded / annotated images |
+| `GET` | `/persons` | List all known persons with counts and creation timestamps |
+| `GET` | `/persons/<name>` | Retrieve person profile and all registered face records |
 | `POST` | `/add_person` | Tag a face as a named person |
-| `POST` | `/delete_person` | Remove a person and their embeddings |
+| `POST` | `/delete_person` | Remove a person and all their face embeddings |
+| `POST` | `/delete_image` | Delete an image record, files, and associated embeddings |
 | `POST` | `/rename_person` | Rename an existing person |
 | `GET/POST` | `/settings` | Get or update recognition thresholds |
 | `POST` | `/reset` | Clear current session |
@@ -295,8 +303,27 @@ All configuration is via environment variables in `.env`:
 | `SECRET_KEY` | *(required)* | Flask session signing key |
 | `FACE_CONFIDENCE_THRESHOLD` | `0.8` | Max L2 distance to count as a match |
 | `FACE_MARGIN_THRESHOLD` | `0.05` | Min gap between best and 2nd-best match |
+| `DBSCAN_EPS` | `0.5` | Max distance for DBSCAN neighborhood clustering |
+| `DBSCAN_MIN_SAMPLES` | `1` | Minimum samples per cluster core point |
 | `MIN_FACE_PX` | `80` | Minimum face bounding box size in pixels |
 | `FLASK_ENV` | `development` | Set to `production` for live deployment |
+
+---
+
+## 🧪 Automated Testing & CI
+
+The project includes an automated test suite covering vector clustering, Non-Maximum Suppression (NMS), ambiguity margin recognition, and REST API endpoints:
+
+```bash
+# Run the test suite
+python -m unittest discover tests
+
+# Or with pytest (if installed)
+pytest tests/ -v
+```
+
+GitHub Actions automatically validates the Python test suite across multiple Python versions (3.10, 3.11), verifies flake8 code quality, validates Docker Compose specifications, and builds the frontend on every push and pull request.
+
 
 ---
 
