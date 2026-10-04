@@ -2,7 +2,7 @@ import os
 import json
 import uuid
 import hashlib
-from flask import Flask, Response, jsonify, request, session
+from flask import Flask, Response, jsonify, request, session, send_from_directory
 from flask_cors import CORS
 from flask_session import Session
 from werkzeug.utils import secure_filename
@@ -88,9 +88,25 @@ def _sha256(file_obj) -> str:
 
 
 # ── Error handlers ─────────────────────────────────────────────────────────────
+@app.errorhandler(400)
+def bad_request(e):
+    return jsonify({"error": "Bad request"}), 400
+
+
+@app.errorhandler(404)
+def not_found(e):
+    return jsonify({"error": "Resource not found"}), 404
+
+
 @app.errorhandler(413)
 def file_too_large(e):
     return jsonify({"error": "File too large. Maximum upload size is 50 MB per file."}), 413
+
+
+@app.errorhandler(500)
+def server_error(e):
+    return jsonify({"error": "Internal server error"}), 500
+
 
 
 # ── Routes ─────────────────────────────────────────────────────────────────────
@@ -186,10 +202,86 @@ def upload_stream():
     )
 
 
+@app.route("/api/stats", methods=["GET"])
+def get_stats():
+    redis_ok = False
+    db_ok = False
+    try:
+        redis_client.ping()
+        redis_ok = True
+    except Exception:
+        pass
+
+    total_persons = 0
+    total_faces = 0
+    total_images = 0
+    try:
+        total_persons = Person.query.count()
+        total_faces = FaceEmbedding.query.count()
+        total_images = ImageRecord.query.count()
+        db_ok = True
+    except Exception:
+        pass
+
+    return jsonify({
+        "status": "ok" if (redis_ok and db_ok) else "degraded",
+        "redis_connected": redis_ok,
+        "db_connected": db_ok,
+        "total_persons": total_persons,
+        "total_faces": total_faces,
+        "total_images": total_images,
+        "confidence_threshold": CONFIDENCE_THRESHOLD,
+        "margin_threshold": MARGIN_THRESHOLD,
+    })
+
+
+@app.route("/uploads/<path:filename>", methods=["GET"])
+def serve_upload(filename):
+    return send_from_directory(app.config["UPLOAD_FOLDER"], filename)
+
+
 @app.route("/persons", methods=["GET"])
 def list_persons():
-    persons = Person.query.all()
-    return jsonify({"persons": [{"name": p.name, "face_count": len(p.faces)} for p in persons]})
+    persons = Person.query.order_by(Person.name.asc()).all()
+    return jsonify({
+        "persons": [
+            {
+                "id": p.id,
+                "name": p.name,
+                "face_count": len(p.faces),
+                "created_at": p.created_at.isoformat() if p.created_at else None,
+            }
+            for p in persons
+        ]
+    })
+
+
+@app.route("/persons/<name>", methods=["GET"])
+def get_person(name):
+    clean_name = (name or "").strip().lower()
+    person = Person.query.filter_by(name=clean_name).first()
+    if not person:
+        return jsonify({"error": f'Person "{name}" not found'}), 404
+
+    face_records = []
+    for face in person.faces:
+        img = face.image
+        face_records.append({
+            "id": face.id,
+            "image_id": face.image_id,
+            "filename": img.filename if img else None,
+            "confidence": face.confidence,
+            "bounding_box": face.bounding_box,
+            "created_at": face.created_at.isoformat() if face.created_at else None,
+        })
+
+    return jsonify({
+        "id": person.id,
+        "name": person.name,
+        "created_at": person.created_at.isoformat() if person.created_at else None,
+        "face_count": len(person.faces),
+        "faces": face_records,
+    })
 
 
 @app.route("/add_person", methods=["POST"])
@@ -239,6 +331,31 @@ def delete_person():
     db.session.delete(person)
     db.session.commit()
     return jsonify({"success": True, "message": f'Deleted "{name}"'})
+
+
+@app.route("/delete_image", methods=["POST"])
+def delete_image():
+    req = request.json or {}
+    filename = req.get("image", "").strip()
+    if not filename:
+        return jsonify({"error": "image filename is required"}), 400
+
+    img_record = ImageRecord.query.filter_by(filename=filename).first()
+    if not img_record:
+        return jsonify({"error": f'Image "{filename}" not found'}), 404
+
+    # Delete physical files
+    for f in [filename, f"boxed_{filename}"]:
+        file_path = os.path.join(app.config["UPLOAD_FOLDER"], f)
+        if os.path.exists(file_path):
+            try:
+                os.remove(file_path)
+            except OSError:
+                pass
+
+    db.session.delete(img_record)
+    db.session.commit()
+    return jsonify({"success": True, "message": f'Deleted image "{filename}"'})
 
 
 @app.route("/rename_person", methods=["POST"])
