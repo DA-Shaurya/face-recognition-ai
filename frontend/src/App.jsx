@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 
-const API = 'http://localhost:5000';
+const API = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 
 function initials(name) {
   if (name === 'Unknown') return '?';
@@ -21,6 +21,9 @@ export default function App() {
   const [uploading, setUploading] = useState(false);
   const [progress, setProgress] = useState(null);
   const [persons, setPersons]   = useState([]);
+  const [stats, setStats]       = useState(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [modalImg, setModalImg] = useState(null);
   const [toasts, setToasts]     = useState([]);
   const [isDragging, setIsDragging] = useState(false);
   const [addName, setAddName]   = useState('');
@@ -48,11 +51,17 @@ export default function App() {
         }
       }).catch(() => {});
     fetchPersons();
+    fetchStats();
   }, []);
 
   function fetchPersons() {
     fetch(`${API}/persons`).then(r => r.json()).then(d => setPersons(d.persons || [])).catch(() => {});
   }
+
+  function fetchStats() {
+    fetch(`${API}/api/stats`).then(r => r.json()).then(d => setStats(d)).catch(() => {});
+  }
+
 
   function addFiles(newFiles) {
     const arr = Array.from(newFiles);
@@ -117,7 +126,7 @@ export default function App() {
       credentials: 'include', body: JSON.stringify({ name, image: imagePath })
     });
     const d = await res.json();
-    if (d.success) { toast(d.message); e.target.reset(); fetchPersons(); }
+    if (d.success) { toast(d.message); e.target.reset(); fetchPersons(); fetchStats(); }
     else toast(d.error, 'error');
   }
 
@@ -129,17 +138,18 @@ export default function App() {
       credentials: 'include', body: JSON.stringify({ name: addName, image: addImg })
     });
     const d = await res.json();
-    if (d.success) { toast(d.message); setAddName(''); setAddImg(''); fetchPersons(); }
+    if (d.success) { toast(d.message); setAddName(''); setAddImg(''); fetchPersons(); fetchStats(); }
     else toast(d.error, 'error');
   }
 
   async function handleDeletePerson(name) {
+    if (!window.confirm(`Are you sure you want to delete "${name}" and all associated embeddings?`)) return;
     const res = await fetch(`${API}/delete_person`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name })
     });
     const d = await res.json();
-    if (d.success) { toast(`Deleted "${name}"`); fetchPersons(); }
+    if (d.success) { toast(`Deleted "${name}"`); fetchPersons(); fetchStats(); }
     else toast(d.error, 'error');
   }
 
@@ -329,7 +339,9 @@ export default function App() {
             {boxed.length > 0 && (
               <>
                 <div className="section-label">Annotated preview</div>
-                <div className="detected-card"><BoxedViewer boxed={boxed}/></div>
+                <div className="detected-card">
+                  <BoxedViewer boxed={boxed} onOpenModal={(url, title) => setModalImg({ url, title })}/>
+                </div>
                 <hr className="section-hr"/>
               </>
             )}
@@ -338,6 +350,7 @@ export default function App() {
             {Object.entries(albums).map(([person, images], idx) => (
               <AlbumCard key={person} person={person} images={images} idx={idx}
                 onCorrect={handleCorrect}
+                onOpenModal={(url, title) => setModalImg({ url, title })}
                 onTagAs={() => { setAddImg(images[0]?.image||''); setAddName(person==='Unknown'?'':person); setView('persons'); }}/>
             ))}
           </div>
@@ -351,6 +364,29 @@ export default function App() {
               <p className="subtitle">Manage known identities and face embeddings</p>
             </div>
 
+            {stats && (
+              <div className="stats-grid">
+                <div className="stat-box">
+                  <div className="stat-box-val">{stats.total_persons ?? 0}</div>
+                  <div className="stat-box-label">Identities</div>
+                </div>
+                <div className="stat-box">
+                  <div className="stat-box-val">{stats.total_faces ?? 0}</div>
+                  <div className="stat-box-label">Face Vectors</div>
+                </div>
+                <div className="stat-box">
+                  <div className="stat-box-val">{stats.total_images ?? 0}</div>
+                  <div className="stat-box-label">Images Indexed</div>
+                </div>
+                <div className="stat-box">
+                  <div className="stat-box-val" style={{ color: stats.status === 'ok' ? '#7efff5' : '#fbbf24' }}>
+                    {stats.status.toUpperCase()}
+                  </div>
+                  <div className="stat-box-label">System State</div>
+                </div>
+              </div>
+            )}
+
             <div className="card persons-add-card">
               <div className="card-shine"/>
               <p className="persons-add-title">Tag a face</p>
@@ -363,7 +399,21 @@ export default function App() {
               </form>
             </div>
 
-            <div className="section-label" style={{ marginTop:32 }}>Known persons ({persons.length})</div>
+            <div className="section-label" style={{ marginTop:32, display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+              <span>Known persons ({persons.length})</span>
+            </div>
+
+            {persons.length > 0 && (
+              <div className="search-container">
+                <input
+                  type="text"
+                  placeholder="Search persons by name…"
+                  value={searchQuery}
+                  onChange={e => setSearchQuery(e.target.value)}
+                  className="search-input"
+                />
+              </div>
+            )}
 
             {persons.length === 0 ? (
               <div className="empty-state">
@@ -373,7 +423,9 @@ export default function App() {
               </div>
             ) : (
               <div className="persons-list">
-                {persons.map(p =>
+                {persons
+                  .filter(p => p.name.toLowerCase().includes(searchQuery.toLowerCase()))
+                  .map(p =>
                   <div key={p.name} className="person-row">
                     <div className="person-avatar">{initials(p.name)}</div>
                     <div className="person-info">
@@ -408,6 +460,14 @@ export default function App() {
         )}
       </div>
 
+      {modalImg && (
+        <ImageModal
+          url={modalImg.url}
+          title={modalImg.title}
+          onClose={() => setModalImg(null)}
+        />
+      )}
+
       <p className="footer-note">Images processed locally · <a href="#">Privacy Policy</a></p>
     </>
   );
@@ -415,11 +475,11 @@ export default function App() {
 
 const IMAGES_PER_PAGE = 12;
 
-function AlbumCard({ person, images, idx, onCorrect, onTagAs }) {
+function AlbumCard({ person, images, idx, onCorrect, onTagAs, onOpenModal }) {
   const [page, setPage] = useState(0);
   const isUnknown = person.startsWith('Unknown');
   const avg     = avgConf(images);
-  const confPct = isUnknown ? 0 : Math.max(0, Math.min(1, 1 - avg));
+  const confPct = isUnknown ? 0 : Math.max(0, Math.min(1, avg));
   const totalPages  = Math.ceil(images.length / IMAGES_PER_PAGE);
   const pageImages  = images.slice(page * IMAGES_PER_PAGE, (page + 1) * IMAGES_PER_PAGE);
 
@@ -441,27 +501,30 @@ function AlbumCard({ person, images, idx, onCorrect, onTagAs }) {
         </div>
       )}
       <div className="images">
-        {pageImages.map((item, iIdx) => (
-          <div className="img-item" key={iIdx} style={{ animationDelay:`${iIdx*0.06}s` }}>
-            <div className="img-wrapper">
-              <img src={`${API}/static/uploads/${encodeURIComponent(item.image)}`} alt={person}/>
-              <div className="face-box"/>
+        {pageImages.map((item, iIdx) => {
+          const imgUrl = `${API}/static/uploads/${encodeURIComponent(item.image)}`;
+          return (
+            <div className="img-item" key={iIdx} style={{ animationDelay:`${iIdx*0.06}s` }}>
+              <div className="img-wrapper" onClick={() => onOpenModal && onOpenModal(imgUrl, `${person} — ${item.image}`)} style={{ cursor:'pointer' }}>
+                <img src={imgUrl} alt={person}/>
+                <div className="face-box"/>
+              </div>
+              <div className="confidence">
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+                {item.confidence.toFixed(3)}
+              </div>
+              {(isUnknown || item.confidence > 0.6) && (
+                <form className="correct-form" onSubmit={e=>onCorrect(e,item.image)}>
+                  <input type="text" name="name" placeholder="Correct name…" className="glass-input glass-input-sm" required/>
+                  <button type="submit" className="btn-add">
+                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                    Tag
+                  </button>
+                </form>
+              )}
             </div>
-            <div className="confidence">
-              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
-              {item.confidence.toFixed(3)}
-            </div>
-            {(isUnknown || item.confidence > 0.6) && (
-              <form className="correct-form" onSubmit={e=>onCorrect(e,item.image)}>
-                <input type="text" name="name" placeholder="Correct name…" className="glass-input glass-input-sm" required/>
-                <button type="submit" className="btn-add">
-                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-                  Tag
-                </button>
-              </form>
-            )}
-          </div>
-        ))}
+          );
+        })}
       </div>
       {totalPages > 1 && (
         <div style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:12, marginTop:16 }}>
@@ -479,7 +542,7 @@ function AlbumCard({ person, images, idx, onCorrect, onTagAs }) {
   );
 }
 
-function BoxedViewer({ boxed }) {
+function BoxedViewer({ boxed, onOpenModal }) {
   const [tab, setTab] = useState(0);
   const item = boxed[tab];
   return (
@@ -497,14 +560,45 @@ function BoxedViewer({ boxed }) {
         <div className="boxed-images">
           <div className="boxed-img-col">
             <span className="boxed-label">Original</span>
-            <img src={`${API}/static/uploads/${encodeURIComponent(item.original)}`} />
+            <img
+              src={`${API}/static/uploads/${encodeURIComponent(item.original)}`}
+              alt="original"
+              style={{ cursor:'pointer' }}
+              onClick={() => onOpenModal && onOpenModal(`${API}/static/uploads/${encodeURIComponent(item.original)}`, item.original)}
+            />
           </div>
           <div className="boxed-img-col">
             <span className="boxed-label">Detected faces</span>
-            <img src={`${API}/static/uploads/${item.boxed}`} alt="annotated"/>
+            <img
+              src={`${API}/static/uploads/${encodeURIComponent(item.boxed)}`}
+              alt="annotated"
+              style={{ cursor:'pointer' }}
+              onClick={() => onOpenModal && onOpenModal(`${API}/static/uploads/${encodeURIComponent(item.boxed)}`, `Annotated — ${item.boxed}`)}
+            />
           </div>
         </div>
       )}
     </div>
   );
 }
+
+function ImageModal({ url, title, onClose }) {
+  useEffect(() => {
+    function handleKeyDown(e) {
+      if (e.key === 'Escape') onClose();
+    }
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [onClose]);
+
+  return (
+    <div className="modal-backdrop" onClick={onClose}>
+      <div className="modal-container" onClick={e => e.stopPropagation()}>
+        <button className="modal-close" onClick={onClose} title="Close">✕</button>
+        <img src={url} alt={title || 'Face preview'} className="modal-img" />
+        {title && <div className="modal-footer"><span>{title}</span></div>}
+      </div>
+    </div>
+  );
+}
+
