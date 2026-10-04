@@ -20,11 +20,17 @@ app.secret_key = os.getenv("SECRET_KEY", "supersecretkey123")
 
 REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
 
-# Flask-Session via Redis (not cookies)
-app.config['SESSION_TYPE'] = 'redis'
+# Flask-Session via Redis with filesystem fallback for standalone dev
 app.config['SESSION_PERMANENT'] = False
 app.config['SESSION_USE_SIGNER'] = True
-app.config['SESSION_REDIS'] = redis.from_url(REDIS_URL)
+try:
+    _r = redis.from_url(REDIS_URL, socket_connect_timeout=0.5)
+    _r.ping()
+    app.config['SESSION_TYPE'] = 'redis'
+    app.config['SESSION_REDIS'] = _r
+except Exception:
+    app.config['SESSION_TYPE'] = 'filesystem'
+
 Session(app)
 
 # PostgreSQL
