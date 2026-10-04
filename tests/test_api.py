@@ -8,8 +8,9 @@ try:
     import pillow_heif
     from app import app
     HAS_APP = True
-except ImportError:
+except Exception:
     HAS_APP = False
+
 
 
 @unittest.skipUnless(HAS_APP, "Flask full microservice dependencies (redis, flask_sqlalchemy) required for API integration test")

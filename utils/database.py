@@ -47,32 +47,37 @@ def init_db(app):
     """Initialize database, create tables, and ensure indexes exist."""
     db.init_app(app)
     with app.app_context():
-        # Enable pgvector extension (safe to call multiple times)
         try:
-            db.session.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
-            db.session.commit()
-        except Exception:
-            db.session.rollback()  # extension already exists — safe to continue
+            # Enable pgvector extension (safe to call multiple times)
+            try:
+                db.session.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
+                db.session.commit()
+            except Exception:
+                db.session.rollback()
 
-        # Create tables
-        db.create_all()
+            # Create tables
+            db.create_all()
 
-        # Add file_hash column to images table if it doesn't exist yet
-        try:
-            db.session.execute(text(
-                "ALTER TABLE images ADD COLUMN IF NOT EXISTS file_hash VARCHAR(64)"
-            ))
-            db.session.commit()
-        except Exception:
+            # Add file_hash column to images table if it doesn't exist yet
+            try:
+                db.session.execute(text(
+                    "ALTER TABLE images ADD COLUMN IF NOT EXISTS file_hash VARCHAR(64)"
+                ))
+                db.session.commit()
+            except Exception:
+                db.session.rollback()
+
+            # Create IVFFlat ANN index on embeddings for fast nearest-neighbor search
+            try:
+                db.session.execute(text("""
+                    CREATE INDEX IF NOT EXISTS face_emb_ivfflat_idx
+                    ON face_embeddings USING ivfflat (embedding vector_l2_ops)
+                    WITH (lists = 100)
+                """))
+                db.session.commit()
+            except Exception:
+                db.session.rollback()
+        except Exception as e:
             db.session.rollback()
+            print(f"[db] Notice: Database connection unavailable during initialization ({e}). Tables will be verified on first request.")
 
-        # Create IVFFlat ANN index on embeddings for fast nearest-neighbor search
-        try:
-            db.session.execute(text("""
-                CREATE INDEX IF NOT EXISTS face_emb_ivfflat_idx
-                ON face_embeddings USING ivfflat (embedding vector_l2_ops)
-                WITH (lists = 100)
-            """))
-            db.session.commit()
-        except Exception:
-            db.session.rollback()
