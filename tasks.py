@@ -25,22 +25,32 @@ def _draw_boxes(img_path, detections):
     img = cv2.imread(img_path)
     if img is None:
         return img_path
+    img_h, img_w = img.shape[:2]
     for det in detections:
         name = det["name"]
         conf = det["confidence"]
         box  = det["box"]
-        x, y, w, h = box["x"], box["y"], box["w"], box["h"]
+        x = max(0, min(int(box.get("x", 0)), img_w - 1))
+        y = max(0, min(int(box.get("y", 0)), img_h - 1))
+        w = max(1, min(int(box.get("w", 1)), img_w - x))
+        h = max(1, min(int(box.get("h", 1)), img_h - y))
         color = (0, 220, 110) if not name.startswith("Unknown") else (60, 60, 220)
         cv2.rectangle(img, (x, y), (x + w, y + h), color, 2)
         label = f"{name}  {conf:.2f}"
         (tw, th), _ = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.55, 1)
-        cv2.rectangle(img, (x, y - th - 8), (x + tw + 6, y), color, -1)
-        cv2.putText(img, label, (x + 3, y - 5),
+        # Avoid drawing above the top edge of the image
+        badge_y1 = max(0, y - th - 8)
+        badge_y2 = y if (y - th - 8) >= 0 else y + th + 8
+        badge_x2 = min(img_w, x + tw + 6)
+        cv2.rectangle(img, (x, badge_y1), (badge_x2, badge_y2), color, -1)
+        text_y = badge_y2 - 5
+        cv2.putText(img, label, (x + 3, text_y),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.55, (255, 255, 255), 1)
     filename = os.path.basename(img_path)
     out_path = os.path.join(os.path.dirname(img_path), "boxed_" + filename)
     cv2.imwrite(out_path, img)
     return "boxed_" + filename
+
 
 
 @celery.task(name="tasks.process_uploaded_images_task")
